@@ -1,0 +1,507 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Classic RAG</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: #f5f5f5;
+      color: #1a1a1a;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 2rem 1rem;
+    }
+
+    h1 { font-size: 1.6rem; font-weight: 700; margin-bottom: 0.25rem; }
+    .subtitle { font-size: 0.9rem; color: #666; margin-bottom: 1.5rem; }
+
+    /* ── Tabs ── */
+    .tabs {
+      display: flex;
+      gap: 0.25rem;
+      margin-bottom: 1.25rem;
+      background: #e8e8e8;
+      border-radius: 10px;
+      padding: 0.25rem;
+      width: 100%;
+      max-width: 680px;
+    }
+
+    .tab-btn {
+      flex: 1;
+      padding: 0.5rem;
+      border: none;
+      border-radius: 7px;
+      background: transparent;
+      cursor: pointer;
+      font-size: 0.88rem;
+      font-weight: 600;
+      color: #666;
+      transition: background 0.15s, color 0.15s;
+      margin-top: 0;
+    }
+
+    .tab-btn.active { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+    .tab-btn:hover:not(.active) { color: #333; }
+
+    .tab-panel { display: none; width: 100%; max-width: 680px; }
+    .tab-panel.active { display: block; }
+
+    /* ── Card ── */
+    .card {
+      background: #fff;
+      border-radius: 12px;
+      padding: 1.5rem;
+      box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+      margin-bottom: 1.25rem;
+    }
+    .card h2 { font-size: 1rem; font-weight: 600; margin-bottom: 1rem; color: #333; }
+
+    /* ── Drop zone ── */
+    .drop-zone {
+      border: 2px dashed #d0d0d0;
+      border-radius: 8px;
+      padding: 2rem;
+      text-align: center;
+      cursor: pointer;
+      color: #888;
+      font-size: 0.9rem;
+      transition: border-color 0.2s, background 0.2s;
+    }
+    .drop-zone.drag-over { border-color: #4f46e5; background: #f0f0ff; color: #4f46e5; }
+    .drop-zone input[type="file"] { display: none; }
+
+    .file-list { margin-top: 0.75rem; display: flex; flex-wrap: wrap; gap: 0.4rem; }
+    .file-tag { background: #f0f0f0; border-radius: 4px; padding: 0.25rem 0.6rem; font-size: 0.8rem; color: #444; }
+
+    /* ── Buttons ── */
+    button {
+      margin-top: 1rem;
+      background: #4f46e5;
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      padding: 0.6rem 1.2rem;
+      font-size: 0.9rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.2s;
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+    }
+    button:hover:not(:disabled) { background: #4338ca; }
+    button:disabled { background: #a5b4fc; cursor: not-allowed; }
+
+    /* ── Status ── */
+    .status { margin-top: 0.75rem; font-size: 0.85rem; padding: 0.5rem 0.75rem; border-radius: 6px; display: none; }
+    .status.success { background: #dcfce7; color: #166534; display: block; }
+    .status.error   { background: #fee2e2; color: #991b1b; display: block; }
+    .status.loading { background: #eff6ff; color: #1e40af; display: block; }
+
+    /* ── Query ── */
+    textarea {
+      width: 100%;
+      border: 1px solid #d0d0d0;
+      border-radius: 8px;
+      padding: 0.75rem;
+      font-size: 0.95rem;
+      font-family: inherit;
+      resize: vertical;
+      min-height: 80px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    textarea:focus { border-color: #4f46e5; }
+
+    .top-k-row { display: flex; align-items: center; gap: 0.75rem; margin-top: 0.75rem; font-size: 0.85rem; color: #555; }
+    .top-k-row input[type="range"] { flex: 1; accent-color: #4f46e5; }
+
+    .answer-box {
+      margin-top: 1rem;
+      background: #fafafa;
+      border: 1px solid #e5e5e5;
+      border-radius: 8px;
+      padding: 1rem;
+      font-size: 0.95rem;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      display: none;
+    }
+
+    .sources { margin-top: 0.75rem; font-size: 0.8rem; color: #777; }
+    .sources span { display: inline-block; background: #f0f0f0; border-radius: 4px; padding: 0.2rem 0.5rem; margin: 0.2rem 0.2rem 0 0; }
+
+    .chunks-toggle { margin-top: 0.75rem; font-size: 0.82rem; color: #4f46e5; cursor: pointer; background: none; border: none; padding: 0; font-weight: 500; margin-top: 0.5rem; }
+    .chunks-toggle:hover { text-decoration: underline; background: none; }
+    .chunks-list { margin-top: 0.5rem; display: none; }
+    .chunk-item { background: #f9f9f9; border-left: 3px solid #c7d2fe; padding: 0.6rem 0.75rem; margin-bottom: 0.5rem; border-radius: 0 6px 6px 0; font-size: 0.82rem; color: #444; line-height: 1.5; }
+    .chunk-meta { font-size: 0.75rem; color: #999; margin-bottom: 0.25rem; }
+
+    /* ── Rewrite badge ── */
+    .rewrite-badge {
+      display: inline-block;
+      background: #fef3c7;
+      color: #92400e;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.78rem;
+      font-weight: 600;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Trace ── */
+    .trace-toolbar {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 1rem;
+    }
+
+    .trace-toolbar h2 { margin-bottom: 0; }
+
+    .refresh-btn {
+      margin-top: 0;
+      padding: 0.35rem 0.8rem;
+      font-size: 0.82rem;
+      background: #6366f1;
+    }
+
+    .trace-empty { color: #999; font-size: 0.9rem; text-align: center; padding: 2rem 0; }
+
+    .trace-entry {
+      background: #fff;
+      border: 1px solid #e5e5e5;
+      border-radius: 10px;
+      padding: 1rem 1.25rem;
+      margin-bottom: 1rem;
+      position: relative;
+    }
+
+    .trace-entry::before {
+      content: '';
+      position: absolute;
+      left: -1px; top: 0; bottom: 0;
+      width: 4px;
+      border-radius: 4px 0 0 4px;
+      background: #4f46e5;
+    }
+
+    .trace-entry.rewritten::before { background: #f59e0b; }
+
+    .trace-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+    }
+
+    .trace-query { font-weight: 600; font-size: 0.95rem; flex: 1; }
+    .trace-time { font-size: 0.75rem; color: #aaa; white-space: nowrap; }
+
+    .trace-pills { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-bottom: 0.75rem; }
+    .pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.25rem;
+      background: #f3f4f6;
+      border-radius: 4px;
+      padding: 0.2rem 0.5rem;
+      font-size: 0.78rem;
+      color: #555;
+    }
+    .pill.rewrite { background: #fef3c7; color: #92400e; }
+    .pill.good    { background: #dcfce7; color: #166534; }
+    .pill.warn    { background: #fee2e2; color: #991b1b; }
+
+    .trace-scores { margin-bottom: 0.5rem; }
+    .score-row { display: flex; align-items: center; gap: 0.5rem; margin-bottom: 0.3rem; font-size: 0.8rem; color: #555; }
+    .score-label { width: 90px; flex-shrink: 0; }
+    .score-bar-wrap { flex: 1; background: #e5e7eb; border-radius: 4px; height: 6px; }
+    .score-bar { height: 6px; border-radius: 4px; background: #4f46e5; transition: width 0.3s; }
+    .score-val { width: 36px; text-align: right; }
+
+    .trace-answer {
+      font-size: 0.82rem;
+      color: #444;
+      background: #f9fafb;
+      border-radius: 6px;
+      padding: 0.5rem 0.75rem;
+      line-height: 1.5;
+      margin-top: 0.5rem;
+    }
+
+    /* ── Spinner ── */
+    .spinner { width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <h1>Classic RAG</h1>
+  <p class="subtitle">Stage 2 — query rewriting · reranking · trace</p>
+
+  <!-- Tabs -->
+  <div class="tabs">
+    <button class="tab-btn active" data-tab="upload">📄 Upload</button>
+    <button class="tab-btn" data-tab="query">💬 Query</button>
+    <button class="tab-btn" data-tab="trace">🔍 Trace</button>
+  </div>
+
+  <!-- ── Upload tab ── -->
+  <div class="tab-panel active" id="tab-upload">
+    <div class="card">
+      <h2>Upload Documents</h2>
+      <div class="drop-zone" id="dropZone">
+        <input type="file" id="fileInput" multiple accept=".txt,.md" />
+        Click to select or drag &amp; drop <strong>.txt</strong> / <strong>.md</strong> files
+      </div>
+      <div class="file-list" id="fileList"></div>
+      <button id="uploadBtn" disabled><span id="uploadBtnText">Upload &amp; Ingest</span></button>
+      <div class="status" id="uploadStatus"></div>
+    </div>
+  </div>
+
+  <!-- ── Query tab ── -->
+  <div class="tab-panel" id="tab-query">
+    <div class="card">
+      <h2>Ask a Question</h2>
+      <textarea id="questionInput" placeholder="e.g. What is the expense claim policy?"></textarea>
+      <div class="top-k-row">
+        <label for="topK">Top-K chunks:</label>
+        <input type="range" id="topK" min="1" max="10" value="3" />
+        <strong id="topKValue">3</strong>
+      </div>
+      <button id="queryBtn"><span id="queryBtnText">Ask</span></button>
+      <div class="status" id="queryStatus"></div>
+      <div id="rewriteBadge"></div>
+      <div class="answer-box" id="answerBox"></div>
+      <div class="sources" id="sourcesBox"></div>
+      <button class="chunks-toggle" id="chunksToggle" style="display:none">Show retrieved chunks ▾</button>
+      <div class="chunks-list" id="chunksList"></div>
+    </div>
+  </div>
+
+  <!-- ── Trace tab ── -->
+  <div class="tab-panel" id="tab-trace">
+    <div class="card">
+      <div class="trace-toolbar">
+        <h2>Decision Trace</h2>
+        <button class="refresh-btn" id="refreshTrace">↻ Refresh</button>
+      </div>
+      <div id="traceContainer"><p class="trace-empty">No traces yet. Ask a question first.</p></div>
+    </div>
+  </div>
+
+  <script>
+    const API = "";
+
+    // ── Tab switching ──────────────────────────────────────────────────────────
+    document.querySelectorAll(".tab-btn").forEach(btn => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll(".tab-btn").forEach(b => b.classList.remove("active"));
+        document.querySelectorAll(".tab-panel").forEach(p => p.classList.remove("active"));
+        btn.classList.add("active");
+        document.getElementById("tab-" + btn.dataset.tab).classList.add("active");
+        if (btn.dataset.tab === "trace") loadTrace();
+      });
+    });
+
+    // ── Drop zone ──────────────────────────────────────────────────────────────
+    const dropZone  = document.getElementById("dropZone");
+    const fileInput = document.getElementById("fileInput");
+    const fileList  = document.getElementById("fileList");
+    const uploadBtn = document.getElementById("uploadBtn");
+    const uploadStatus = document.getElementById("uploadStatus");
+    let selectedFiles = [];
+
+    dropZone.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => handleFiles(fileInput.files));
+    dropZone.addEventListener("dragover", e => { e.preventDefault(); dropZone.classList.add("drag-over"); });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", e => { e.preventDefault(); dropZone.classList.remove("drag-over"); handleFiles(e.dataTransfer.files); });
+
+    function handleFiles(files) {
+      selectedFiles = Array.from(files).filter(f => f.name.endsWith(".txt") || f.name.endsWith(".md"));
+      fileList.innerHTML = selectedFiles.map(f => `<span class="file-tag">${f.name}</span>`).join("");
+      uploadBtn.disabled = selectedFiles.length === 0;
+      setStatus(uploadStatus, "", "");
+    }
+
+    uploadBtn.addEventListener("click", async () => {
+      if (!selectedFiles.length) return;
+      setLoading(uploadBtn, "uploadBtnText", "Uploading…", true);
+      setStatus(uploadStatus, "Uploading and ingesting…", "loading");
+      const form = new FormData();
+      selectedFiles.forEach(f => form.append("files", f));
+      try {
+        const res = await fetch(`${API}/upload`, { method: "POST", body: form });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Upload failed");
+        setStatus(uploadStatus, "✓ " + data.message, "success");
+        selectedFiles = []; fileList.innerHTML = ""; fileInput.value = ""; uploadBtn.disabled = true;
+      } catch (err) {
+        setStatus(uploadStatus, "✗ " + err.message, "error");
+      } finally {
+        setLoading(uploadBtn, "uploadBtnText", "Upload &amp; Ingest", false);
+      }
+    });
+
+    // ── Top-K ─────────────────────────────────────────────────────────────────
+    const topKSlider = document.getElementById("topK");
+    const topKValue  = document.getElementById("topKValue");
+    topKSlider.addEventListener("input", () => { topKValue.textContent = topKSlider.value; });
+
+    // ── Query ──────────────────────────────────────────────────────────────────
+    const queryBtn    = document.getElementById("queryBtn");
+    const queryStatus = document.getElementById("queryStatus");
+    const answerBox   = document.getElementById("answerBox");
+    const sourcesBox  = document.getElementById("sourcesBox");
+    const chunksToggle = document.getElementById("chunksToggle");
+    const chunksList  = document.getElementById("chunksList");
+    const rewriteBadge = document.getElementById("rewriteBadge");
+
+    queryBtn.addEventListener("click", doQuery);
+    document.getElementById("questionInput").addEventListener("keydown", e => {
+      if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); doQuery(); }
+    });
+
+    async function doQuery() {
+      const question = document.getElementById("questionInput").value.trim();
+      if (!question) return;
+      setLoading(queryBtn, "queryBtnText", "Thinking…", true);
+      setStatus(queryStatus, "Retrieving, reranking, generating…", "loading");
+      answerBox.style.display = "none";
+      sourcesBox.innerHTML = "";
+      rewriteBadge.innerHTML = "";
+      chunksToggle.style.display = "none";
+      chunksList.style.display = "none";
+      chunksList.innerHTML = "";
+
+      try {
+        const res = await fetch(`${API}/query`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ question, top_k: parseInt(topKSlider.value) }),
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Query failed");
+
+        setStatus(queryStatus, "", "");
+        answerBox.textContent = data.answer;
+        answerBox.style.display = "block";
+
+        if (data.trace?.was_rewritten) {
+          rewriteBadge.innerHTML = `<span class="rewrite-badge">⟳ Query rewritten: "${escapeHtml(data.trace.rewritten_query)}"</span>`;
+        }
+
+        if (data.sources?.length) {
+          sourcesBox.innerHTML = "Sources: " + data.sources.map(s =>
+            `<span>${s.split(/[\\/]/).pop()}</span>`).join("");
+        }
+
+        if (data.chunks?.length) {
+          chunksToggle.style.display = "inline-block";
+          chunksList.innerHTML = data.chunks.map((c, i) => `
+            <div class="chunk-item">
+              <div class="chunk-meta">[${i+1}] ${c.source.split(/[\\/]/).pop()} · chunk ${c.chunk_index} · dist ${c.distance.toFixed(4)} · rerank ${(c.rerank_score||0).toFixed(4)}</div>
+              ${escapeHtml(c.text)}
+            </div>`).join("");
+        }
+      } catch (err) {
+        setStatus(queryStatus, "✗ " + err.message, "error");
+      } finally {
+        setLoading(queryBtn, "queryBtnText", "Ask", false);
+      }
+    }
+
+    chunksToggle.addEventListener("click", () => {
+      const open = chunksList.style.display === "block";
+      chunksList.style.display = open ? "none" : "block";
+      chunksToggle.textContent = open ? "Show retrieved chunks ▾" : "Hide retrieved chunks ▴";
+    });
+
+    // ── Trace ──────────────────────────────────────────────────────────────────
+    document.getElementById("refreshTrace").addEventListener("click", loadTrace);
+
+    async function loadTrace() {
+      const container = document.getElementById("traceContainer");
+      try {
+        const res = await fetch(`${API}/trace`);
+        const entries = await res.json();
+        if (!entries.length) {
+          container.innerHTML = '<p class="trace-empty">No traces yet. Ask a question first.</p>';
+          return;
+        }
+        container.innerHTML = entries.map(renderTrace).join("");
+      } catch (err) {
+        container.innerHTML = `<p class="trace-empty">Error loading trace: ${escapeHtml(err.message)}</p>`;
+      }
+    }
+
+    function renderTrace(e) {
+      const ts = new Date(e.timestamp).toLocaleTimeString();
+      const rewritten = e.was_rewritten;
+      const topSim = e.top_similarity;
+      const simClass = topSim >= 0.5 ? "good" : "warn";
+
+      const retrievalBars = (e.retrieval_scores || []).map((s, i) =>
+        scoreBar(`Retrieval ${i+1}`, s, "#6366f1")).join("");
+      const rerankBars = (e.rerank_scores || []).map((s, i) =>
+        scoreBar(`Rerank ${i+1}`, s, "#059669")).join("");
+
+      return `
+        <div class="trace-entry ${rewritten ? "rewritten" : ""}">
+          <div class="trace-header">
+            <div class="trace-query">${escapeHtml(e.query)}</div>
+            <div class="trace-time">${ts}</div>
+          </div>
+          <div class="trace-pills">
+            <span class="pill ${simClass}">top sim: ${topSim}</span>
+            ${rewritten ? `<span class="pill rewrite">⟳ rewritten → "${escapeHtml(e.rewritten_query)}"</span>` : ""}
+            ${(e.sources||[]).map(s => `<span class="pill">${s.split(/[\\/]/).pop()}</span>`).join("")}
+          </div>
+          <div class="trace-scores">
+            ${retrievalBars}
+            ${rerankBars}
+          </div>
+          <div class="trace-answer">${escapeHtml(e.answer)}</div>
+        </div>`;
+    }
+
+    function scoreBar(label, score, color) {
+      const pct = Math.round(score * 100);
+      return `
+        <div class="score-row">
+          <span class="score-label">${label}</span>
+          <div class="score-bar-wrap"><div class="score-bar" style="width:${pct}%;background:${color}"></div></div>
+          <span class="score-val">${score.toFixed(2)}</span>
+        </div>`;
+    }
+
+    // ── Helpers ────────────────────────────────────────────────────────────────
+    function setStatus(el, msg, type) {
+      el.textContent = msg;
+      el.className = "status" + (type ? " " + type : "");
+    }
+
+    function setLoading(btn, textId, label, loading) {
+      document.getElementById(textId).innerHTML = label;
+      btn.disabled = loading;
+      let spinner = btn.querySelector(".spinner");
+      if (loading && !spinner) { spinner = document.createElement("div"); spinner.className = "spinner"; btn.prepend(spinner); }
+      else if (!loading && spinner) { spinner.remove(); }
+    }
+
+    function escapeHtml(str) {
+      return (str || "").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
+    }
+  </script>
+</body>
+</html>
