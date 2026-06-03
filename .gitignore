@@ -9,6 +9,10 @@ docs/
 
 # Trace log (runtime data)
 trace_log.jsonl
+eval_results.json
+
+# Debug scripts
+debug_ragas.py
 
 # Python
 __pycache__/

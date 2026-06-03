@@ -1,0 +1,42 @@
+[
+  {
+    "question": "How many days of paid annual leave do full-time employees accrue per year?",
+    "ground_truth": "Full-time employees accrue 20 days of paid annual leave per calendar year."
+  },
+  {
+    "question": "How many days of unused annual leave can be carried into the following year?",
+    "ground_truth": "Up to 5 days of unused annual leave may be carried into the following year. Any balance above 5 days is forfeited on 31 December."
+  },
+  {
+    "question": "What is the daily meal cap for employees while travelling?",
+    "ground_truth": "The daily meal cap while travelling is $80, covering breakfast, lunch, and dinner combined. Alcohol is not reimbursable except as part of a pre-approved client dinner."
+  },
+  {
+    "question": "How long does a manager have to approve an expense claim?",
+    "ground_truth": "The manager approval target is 3 working days."
+  },
+  {
+    "question": "What qualifies as a SEV1 incident?",
+    "ground_truth": "A SEV1 is a critical incident where a production system is unavailable to most users, there is confirmed data loss, or a security breach is in progress."
+  },
+  {
+    "question": "How often should status updates be given during a SEV1 incident?",
+    "ground_truth": "Status updates should be given every 15 minutes during a SEV1 incident, even if the update is 'no change yet'."
+  },
+  {
+    "question": "What is the P1 IT support response time and resolution target?",
+    "ground_truth": "For P1 (cannot work at all), the first response target is within 30 minutes and the resolution target is 4 working hours."
+  },
+  {
+    "question": "How many days of paid sick leave are employees entitled to per year?",
+    "ground_truth": "Employees are entitled to 10 days of paid sick leave per calendar year."
+  },
+  {
+    "question": "How much paid parental leave is a primary caregiver entitled to?",
+    "ground_truth": "Primary caregivers are entitled to 16 weeks of paid parental leave."
+  },
+  {
+    "question": "What should you do if you cannot reach the primary on-call engineer within 10 minutes during a SEV1?",
+    "ground_truth": "If you cannot reach the primary on-call within 10 minutes for a SEV1 or SEV2, you should page the secondary on-call engineer."
+  }
+]

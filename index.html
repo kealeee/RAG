@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Classic RAG</title>
+  <title>Agentic RAG</title>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -238,20 +238,70 @@
       margin-top: 0.5rem;
     }
 
+    /* ── Scorecard ── */
+    .scorecard {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 0.75rem;
+      margin-bottom: 1.5rem;
+    }
+
+    .metric-card {
+      background: #f9fafb;
+      border: 1px solid #e5e7eb;
+      border-radius: 10px;
+      padding: 1rem;
+      text-align: center;
+    }
+
+    .metric-name { font-size: 0.78rem; color: #666; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.4rem; }
+    .metric-score { font-size: 2rem; font-weight: 700; color: #111; line-height: 1; }
+    .metric-score.good  { color: #16a34a; }
+    .metric-score.ok    { color: #d97706; }
+    .metric-score.poor  { color: #dc2626; }
+    .metric-bar-wrap { margin-top: 0.5rem; background: #e5e7eb; border-radius: 4px; height: 6px; }
+    .metric-bar { height: 6px; border-radius: 4px; background: #4f46e5; }
+
+    .eval-weakest {
+      background: #fef9c3;
+      border: 1px solid #fde047;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      font-size: 0.85rem;
+      margin-bottom: 1.25rem;
+      color: #713f12;
+    }
+
+    .eval-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+    .eval-table th { background: #f3f4f6; padding: 0.5rem 0.6rem; text-align: left; font-weight: 600; color: #555; }
+    .eval-table td { padding: 0.5rem 0.6rem; border-top: 1px solid #f0f0f0; vertical-align: top; }
+    .eval-table tr:hover td { background: #fafafa; }
+    .score-chip {
+      display: inline-block;
+      border-radius: 4px;
+      padding: 0.15rem 0.4rem;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .score-chip.good { background: #dcfce7; color: #166534; }
+    .score-chip.ok   { background: #fef9c3; color: #713f12; }
+    .score-chip.poor { background: #fee2e2; color: #991b1b; }
+
     /* ── Spinner ── */
     .spinner { width: 14px; height: 14px; border: 2px solid #fff; border-top-color: transparent; border-radius: 50%; animation: spin 0.6s linear infinite; }
     @keyframes spin { to { transform: rotate(360deg); } }
   </style>
 </head>
 <body>
-  <h1>Classic RAG</h1>
-  <p class="subtitle">Stage 2 — query rewriting · reranking · trace</p>
+  <h1>Agentic RAG</h1>
+  <p class="subtitle">Stage 3 — query rewriting · reranking · trace · eval</p>
 
   <!-- Tabs -->
   <div class="tabs">
     <button class="tab-btn active" data-tab="upload">📄 Upload</button>
     <button class="tab-btn" data-tab="query">💬 Query</button>
     <button class="tab-btn" data-tab="trace">🔍 Trace</button>
+    <button class="tab-btn" data-tab="evaluate">📊 Evaluate</button>
   </div>
 
   <!-- ── Upload tab ── -->
@@ -285,6 +335,19 @@
       <div class="sources" id="sourcesBox"></div>
       <button class="chunks-toggle" id="chunksToggle" style="display:none">Show retrieved chunks ▾</button>
       <div class="chunks-list" id="chunksList"></div>
+    </div>
+  </div>
+
+  <!-- ── Evaluate tab ── -->
+  <div class="tab-panel" id="tab-evaluate">
+    <div class="card">
+      <div class="trace-toolbar">
+        <h2>Evaluate — Golden Set</h2>
+        <button id="runEvalBtn"><span id="evalBtnText">▶ Run Evaluation</span></button>
+      </div>
+      <p style="font-size:0.82rem;color:#888;margin-bottom:1rem;">Runs 10 questions through your RAG and scores with Gemini Flash Lite as judge. Runs in the background — results appear here automatically.</p>
+      <div class="status" id="evalStatus"></div>
+      <div id="evalContainer"></div>
     </div>
   </div>
 
@@ -483,6 +546,134 @@
           <div class="score-bar-wrap"><div class="score-bar" style="width:${pct}%;background:${color}"></div></div>
           <span class="score-val">${score.toFixed(2)}</span>
         </div>`;
+    }
+
+    // ── Evaluate ───────────────────────────────────────────────────────────────
+    let _pollTimer = null;
+
+    document.getElementById("runEvalBtn").addEventListener("click", async () => {
+      const btn = document.getElementById("runEvalBtn");
+      const container = document.getElementById("evalContainer");
+      const status = document.getElementById("evalStatus");
+
+      setLoading(btn, "evalBtnText", "Running…", true);
+      setStatus(status, "Starting evaluation…", "loading");
+      container.innerHTML = renderProgressShell();
+
+      try {
+        const res = await fetch(`${API}/evaluate/start`, { method: "POST" });
+        const data = await res.json();
+        if (!res.ok) throw new Error(data.detail || "Failed to start");
+
+        pollEval(data.job_id, btn, status, container);
+      } catch (err) {
+        setStatus(status, "✗ " + err.message, "error");
+        setLoading(btn, "evalBtnText", "▶ Run Evaluation", false);
+      }
+    });
+
+    function pollEval(jobId, btn, status, container) {
+      clearInterval(_pollTimer);
+      _pollTimer = setInterval(async () => {
+        try {
+          const res = await fetch(`${API}/evaluate/status/${jobId}`);
+          const data = await res.json();
+
+          // Update live progress list
+          const ul = document.getElementById("evalProgressList");
+          if (ul && data.progress) {
+            ul.innerHTML = data.progress.map(p =>
+              `<li>${p.stage === "rag" ? "🔍 RAG" : "⚖️ Scoring"} [${p.index + 1}/10] ${escapeHtml(p.question.slice(0, 60))}…</li>`
+            ).join("");
+          }
+
+          if (data.status === "done") {
+            clearInterval(_pollTimer);
+            setStatus(status, "✓ Evaluation complete", "success");
+            setLoading(btn, "evalBtnText", "▶ Run Evaluation", false);
+            container.innerHTML = renderScorecard(data.result);
+          } else if (data.status === "error") {
+            clearInterval(_pollTimer);
+            setStatus(status, "✗ " + data.error, "error");
+            setLoading(btn, "evalBtnText", "▶ Run Evaluation", false);
+            container.innerHTML = "";
+          }
+        } catch (err) {
+          clearInterval(_pollTimer);
+          setStatus(status, "✗ " + err.message, "error");
+          setLoading(btn, "evalBtnText", "▶ Run Evaluation", false);
+        }
+      }, 3000);
+    }
+
+    function renderProgressShell() {
+      return `
+        <div style="margin-bottom:1rem">
+          <div style="font-size:0.85rem;font-weight:600;color:#555;margin-bottom:0.5rem">Progress</div>
+          <ul id="evalProgressList" style="list-style:none;font-size:0.82rem;color:#555;line-height:2"></ul>
+        </div>`;
+    }
+
+    function renderScorecard(data) {
+      const metrics = ["faithfulness", "answer_relevancy", "context_precision", "context_recall"];
+      const scores = data.scores || {};
+
+      // Scorecard grid
+      const cards = metrics.map(m => {
+        const s = scores[m] ?? 0;
+        const cls = s >= 0.7 ? "good" : s >= 0.4 ? "ok" : "poor";
+        const pct = Math.round(s * 100);
+        return `
+          <div class="metric-card">
+            <div class="metric-name">${m.replace(/_/g, " ")}</div>
+            <div class="metric-score ${cls}">${pct}<span style="font-size:1rem">%</span></div>
+            <div class="metric-bar-wrap"><div class="metric-bar" style="width:${pct}%"></div></div>
+          </div>`;
+      }).join("");
+
+      // Weakest metric
+      const weakest = metrics.reduce((a, b) => (scores[a] ?? 1) < (scores[b] ?? 1) ? a : b);
+      const advice = {
+        faithfulness: "Your answers contain claims not supported by retrieved chunks. Try a better generative model or tighter prompting.",
+        answer_relevancy: "Answers are drifting off-topic. Tighten the prompt to stay focused on the question.",
+        context_precision: "Retrieved chunks contain noise. Consider raising the similarity threshold or improving chunking.",
+        context_recall: "The context is missing key information. Try increasing Top-K or improving the embedding model.",
+      };
+
+      const weakestHtml = `
+        <div class="eval-weakest">
+          ⚠ Weakest metric: <strong>${weakest.replace(/_/g, " ")}</strong> (${Math.round((scores[weakest]??0)*100)}%)
+          — ${advice[weakest] || "Investigate this metric further."}
+        </div>`;
+
+      // Per-question table
+      const rows = (data.per_question || []).map((item, i) => {
+        const qScores = item.scores || {};
+        const chips = metrics.map(m => {
+          const s = qScores[m] ?? null;
+          if (s === null) return "";
+          const cls = s >= 0.7 ? "good" : s >= 0.4 ? "ok" : "poor";
+          return `<span class="score-chip ${cls}">${m.replace(/_/g," ").split(" ").map(w=>w[0]).join("")}: ${Math.round(s*100)}%</span> `;
+        }).join("");
+        return `
+          <tr>
+            <td style="width:2rem;color:#aaa">${i+1}</td>
+            <td>${escapeHtml(item.question)}</td>
+            <td style="color:#555">${escapeHtml((item.answer||"").slice(0,120))}${item.answer?.length>120?"…":""}</td>
+            <td style="white-space:nowrap">${chips}</td>
+          </tr>`;
+      }).join("");
+
+      const table = rows ? `
+        <h3 style="font-size:0.9rem;font-weight:600;margin-bottom:0.75rem;color:#333">Per-question breakdown</h3>
+        <div style="overflow-x:auto">
+          <table class="eval-table">
+            <thead><tr><th>#</th><th>Question</th><th>Answer</th><th>Scores</th></tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+        </div>` : "";
+
+      return `<div class="scorecard">${cards}</div>${weakestHtml}${table}`;
     }
 
     // ── Helpers ────────────────────────────────────────────────────────────────
